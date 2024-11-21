@@ -1,0 +1,259 @@
+package com.example.geupjo_bus
+
+import android.util.Log
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.example.geupjo_bus.api.BusApiClient
+import com.example.geupjo_bus.api.BusStopItem
+import com.example.geupjo_bus.ui.theme.Geupjo_BusTheme
+import kotlinx.coroutines.launch
+import java.net.URLDecoder
+import androidx.compose.material3.ExperimentalMaterial3Api
+import com.example.geupjo_bus.api.BusRouteItem
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BusStopSearchScreen(
+    modifier: Modifier = Modifier,
+    onBackClick: () -> Unit,
+    apiKey: String,
+    onBusStopClick: (String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
+    var searchResults by remember { mutableStateOf(listOf<BusStopItem>()) }
+    var showDialog by remember { mutableStateOf(false) }
+    var selectedBusStopName by remember { mutableStateOf("") }
+    var selectedBusStopId by remember { mutableStateOf("") }
+    var busRouteInfo by remember { mutableStateOf("경유 노선 정보를 로드 중입니다...") }
+    val coroutineScope = rememberCoroutineScope()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 뒤로가기 버튼
+        Button(
+            onClick = onBackClick,
+            modifier = Modifier.align(Alignment.Start),
+            colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.primary)
+        ) {
+            Text("뒤로 가기", color = MaterialTheme.colorScheme.onPrimary)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 검색 제목
+        Text(
+            text = "정류장 검색",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        // 검색 입력 필드
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { newValue -> searchQuery = newValue },
+            label = { Text("정류장 이름 입력") },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = "검색 아이콘")
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    coroutineScope.launch {
+                        searchResults = searchBusStopsFromApi(searchQuery.text, apiKey)
+                    }
+                }
+            ),
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                cursorColor = MaterialTheme.colorScheme.primary
+            )
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 검색 결과 표시
+        if (searchResults.isNotEmpty()) {
+            Text(
+                text = "검색 결과:",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                searchResults.forEach { result ->
+                    BusStopSearchResultItem(
+                        busStopName = result.nodeName ?: "알 수 없음",
+                        onClick = {
+                            val currentBusStopId = result.nodeId ?: ""
+                            selectedBusStopName = result.nodeName ?: "알 수 없음"
+                            showDialog = true
+                            coroutineScope.launch {
+                                showDialog = false // Dialog를 닫아서 상태를 초기화
+                                busRouteInfo = "경유 노선 정보를 로드 중입니다..."
+                                busRouteInfo = fetchBusRoutesByStop(currentBusStopId, apiKey)
+                                Log.d("UI Update", "BusRouteInfo 업데이트 완료: $busRouteInfo")
+                                showDialog = true // Dialog를 다시 열어서 업데이트된 값을 렌더링
+                            }
+                            onBusStopClick(result.nodeName ?: "알 수 없음")
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        } else {
+            // 결과 없음 텍스트
+            Text(
+                text = "검색 결과가 없습니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        }
+    }
+
+    // AlertDialog
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = {
+                Text(
+                    text = selectedBusStopName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            },
+            text = {
+                Text(
+                    text = busRouteInfo,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(8.dp)
+                )
+            },
+            confirmButton = {
+                Button(onClick = { showDialog = false }) {
+                    Text("확인")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = MaterialTheme.shapes.large
+        )
+    }
+}
+
+@Composable
+fun BusStopSearchResultItem(busStopName: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(4.dp),
+        elevation = CardDefaults.elevatedCardElevation(),
+        colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = busStopName,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+
+suspend fun searchBusStopsFromApi(query: String, apiKey: String): List<BusStopItem> {
+    return try {
+        val decodedKey = URLDecoder.decode(apiKey, "UTF-8")
+        val response = BusApiClient.apiService.searchBusStops(
+            apiKey = decodedKey,
+            cityCode = 38030,
+            nodeNm = query
+        )
+
+        if (response.isSuccessful) {
+            response.body()?.body?.items?.itemList ?: emptyList()
+        } else {
+            Log.e("API Error", "API 호출 실패 - 코드: ${response.code()}, 메시지: ${response.message()}")
+            emptyList()
+        }
+    } catch (e: Exception) {
+        Log.e("API Exception", "API 호출 오류: ${e.message}")
+        emptyList()
+    }
+}
+
+suspend fun fetchBusRoutesByStop(busStopId: String, apiKey: String): String {
+    return try {
+        Log.d("fetchBusRoutesByStop", "전달된 BusStopId: $busStopId")
+        val decodedKey = URLDecoder.decode(apiKey, "UTF-8")
+        val response = BusApiClient.apiService.getBusRoutesByStop(
+            apiKey = decodedKey,
+            cityCode = 38030,
+            nodeId = busStopId,  // 'nodeId'를 Retrofit 인터페이스에 맞게 전달
+            numOfRows = 10,      // 필요한 요청 수
+            pageNo = 1           // 페이지 번호
+        )
+
+        // 요청 URL 확인
+        Log.d("Retrofit URL", "Final URL: ${response.raw().request.url}")
+
+        if (response.isSuccessful) {
+            response.body()?.body?.items?.itemList?.joinToString("\n") { item ->
+                val routeNo = item.routeNo ?: "알 수 없음"
+                val endNodeName = item.endNodeName ?: "알 수 없음"
+                "$routeNo 번 버스 - ($endNodeName 방향)"
+            } ?: "해당 정류장의 경유 노선 정보가 없습니다."
+        } else {
+            Log.e("API Error", "Failed with Code: ${response.code()}, Message: ${response.message()}")
+            "경유 노선 정보를 가져오는 데 실패했습니다."
+        }
+    } catch (e: Exception) {
+        Log.e("API Exception", "오류 발생: ${e.message}")
+        "경유 노선 정보를 가져오는 중 오류가 발생했습니다."
+    }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewBusStopSearchScreen() {
+    Geupjo_BusTheme {
+        BusStopSearchScreen(
+            onBackClick = {},
+            apiKey = "DUMMY_API_KEY",
+            onBusStopClick = { busStopName ->
+                Log.d("Preview", "Clicked on bus stop: $busStopName")
+            }
+        )
+    }
+}
