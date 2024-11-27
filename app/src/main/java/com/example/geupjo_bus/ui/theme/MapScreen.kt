@@ -152,32 +152,9 @@ private fun setupNearbyBusStops(
     googleMap: GoogleMap?,
     context: Context
 ) {
-    val busStops = listOf(
-        BusStop("경상국립대학교 가좌캠퍼스 정문", LatLng(35.151994, 128.104567), "첫 번째 정류장입니다."),
-        BusStop("정류장 B", LatLng(35.152771, 128.105747), "두 번째 정류장입니다."),
-        BusStop("경상국립대학교 가좌캠퍼스 후문", LatLng(35.155421, 128.106986), "정보")
-    )
-
-    busStops.forEach { stop ->
-        googleMap?.addMarker(
-            MarkerOptions()
-                .position(stop.location)
-                .title(stop.name)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)) // 색상 변경
-                .anchor(0.5f, 0.5f) // 아이콘 중앙 하단을 마커 위치로 설정
-        )?.tag = stop
-    }
-
-    googleMap?.setOnMarkerClickListener { marker ->
-        val busStop = marker.tag as? BusStop
-        if (busStop != null) {
-            marker.showInfoWindow()
-            // 마커 클릭 시 선택된 정류장 정보를 MapScreen에서 상태로 관리
-            var selectedBusStop = busStop
-        }
-        true
-    }
+    // 마커 추가 기능 제거
 }
+
 // 벡터 이미지를 Bitmap으로 변환하여 마커 아이콘으로 사용
 private fun bitmapDescriptorFromVector(context: Context, vectorResId: Int): BitmapDescriptor? {
     val vectorDrawable = ContextCompat.getDrawable(context, vectorResId) as? VectorDrawable

@@ -6,8 +6,6 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.MarkerOptions
 import com.example.geupjo_bus.R
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import android.widget.Button
@@ -15,7 +13,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.content.Intent
 import android.net.Uri
-
+import com.example.geupjo_bus.api.BusApiClient
+import com.example.geupjo_bus.ui.BusStop
+import com.google.android.gms.maps.model.LatLng
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -53,22 +53,19 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
 
-        // 예시 좌표 (서울 시청 위치) - 실제 좌표는 API에서 가져와야 함
-        val exampleLocation = LatLng(37.5665, 126.9780)
+        // 기존 마커 제거
+        map.clear()
 
-        // 마커 추가
-        map.addMarker(
-            MarkerOptions()
-                .position(exampleLocation)
-                .title(busStopName)
-        )
+        // 지도 초기화
+        val initialLocation = LatLng(37.5665, 126.9780)
+        map.moveCamera(CameraUpdateFactory.newLatLngZoom(initialLocation, 15f))
 
-        // 카메라를 선택한 정류장 위치로 이동
-        map.moveCamera(CameraUpdateFactory.newLatLngZoom(exampleLocation, 15f))
-
-        // 지도 옵션 설정 (예: 줌 버튼 활성화)
-        map.uiSettings.isZoomControlsEnabled = true
+        // 불필요한 UI 비활성화
+        map.uiSettings.isZoomControlsEnabled = true // 줌 버튼 활성화
+        map.uiSettings.isCompassEnabled = false // 나침반 비활성화
+        map.uiSettings.isMapToolbarEnabled = false // 맵 툴바 비활성화
     }
+
 
     private fun startDirections(busStopName: String?) {
         // 실제 경로 안내 로직 (외부 지도 앱 호출 예제)
@@ -79,4 +76,35 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             startActivity(mapIntent)
         }
     }
+
+    // BusApiClient를 사용해 주변 정류장 목록 가져오기
+    suspend fun fetchNearbyBusStops(
+        latitude: Double,
+        longitude: Double,
+        apiKey: String
+    ): List<BusStop> {
+        return try {
+            val response = BusApiClient.apiService.getNearbyBusStops(
+                apiKey = apiKey,
+                latitude = latitude,
+                longitude = longitude
+            )
+
+            if (response.isSuccessful) {
+                response.body()?.body?.items?.itemList?.map {
+                    BusStop(
+                        name = it.nodeName ?: "알 수 없음",
+                        location = LatLng(it.latitude ?: 0.0, it.longitude ?: 0.0),
+                        info = "거리: ${it.nodeNumber}m"
+                    )
+                } ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
 }
