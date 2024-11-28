@@ -25,7 +25,22 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import com.example.geupjo_bus.api.BusRouteItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import kotlinx.coroutines.launch
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.tasks.Task
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +57,38 @@ fun BusStopSearchScreen(
     var selectedBusStopId by remember { mutableStateOf("") }
     var busRouteInfo by remember { mutableStateOf("경유 노선 정보를 로드 중입니다...") }
     val coroutineScope = rememberCoroutineScope()
+
+    // 위도와 경도 상태 저장
+    var latitude by remember { mutableStateOf<Double?>(null) }
+    var longitude by remember { mutableStateOf<Double?>(null) }
+
+    // FusedLocationProviderClient를 통해 현재 위치를 가져오는 작업
+    val context = LocalContext.current
+    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+
+    // 위치 권한 요청
+    LaunchedEffect(Unit) {
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // 권한 요청 (UI로 위치 권한 요청 표시)
+        } else {
+            // 위치 정보 가져오기
+            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                if (location != null) {
+                    latitude = location.latitude
+                    longitude = location.longitude
+                    // SharedPreferences나 다른 방법으로 위도/경도 저장 가능
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -107,22 +154,29 @@ fun BusStopSearchScreen(
 
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 searchResults.forEach { result ->
-                    BusStopSearchResultItem(
-                        busStopName = result.nodeName ?: "알 수 없음",
-                        onClick = {
-                            val currentBusStopId = result.nodeId ?: ""
-                            selectedBusStopName = result.nodeName ?: "알 수 없음"
-                            showDialog = true
-                            coroutineScope.launch {
-                                showDialog = false // Dialog를 닫아서 상태를 초기화
-                                busRouteInfo = "경유 노선 정보를 로드 중입니다..."
-                                busRouteInfo = fetchBusRoutesByStop(currentBusStopId, apiKey)
-                                Log.d("UI Update", "BusRouteInfo 업데이트 완료: $busRouteInfo")
-                                showDialog = true // Dialog를 다시 열어서 업데이트된 값을 렌더링
-                            }
-                            onBusStopClick(result.nodeName ?: "알 수 없음")
+                    latitude?.let {
+                        longitude?.let { it1 ->
+                            BusStopSearchResultItem(
+                                busStopName = result.nodeName ?: "알 수 없음",
+                                currentlati = it,
+                                currentlong = it1,
+                                nodeLati = result.nodeLati ?: "알 수 없음".toDouble(),
+                                nodeLong = result.nodeLong ?: "알 수 없음".toDouble(),
+                                onClick = {
+                                    val currentBusStopId = result.nodeId ?: ""
+                                    selectedBusStopName = result.nodeName ?: "알 수 없음"
+                                    showDialog = true
+                                    coroutineScope.launch {
+                                        showDialog = false // Dialog를 닫아서 상태를 초기화
+                                        busRouteInfo = "경유 노선 정보를 로드 중입니다..."
+                                        busRouteInfo = fetchBusRoutesByStop(currentBusStopId, apiKey)
+                                        showDialog = true // Dialog를 다시 열어서 업데이트된 값을 렌더링
+                                    }
+                                    onBusStopClick(result.nodeName ?: "알 수 없음")
+                                }
+                            )
                         }
-                    )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
@@ -167,26 +221,28 @@ fun BusStopSearchScreen(
     }
 }
 
+
 @Composable
-fun BusStopSearchResultItem(busStopName: String, onClick: () -> Unit) {
+fun BusStopSearchResultItem(busStopName: String, currentlati: Double, currentlong: Double, nodeLati: Double, nodeLong: Double, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(4.dp),
+            .padding(8.dp),
         elevation = CardDefaults.elevatedCardElevation(),
         colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = busStopName,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
+        Text(
+            text = busStopName,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+
+            text = "${getDistance(currentlati, currentlong, nodeLati, nodeLong).toInt()}m",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

@@ -24,6 +24,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,6 +36,8 @@ import java.net.URLEncoder
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+import androidx.compose.material.icons.Icons
+
 
 @Composable
 fun RouteSearchScreen(
@@ -47,6 +50,7 @@ fun RouteSearchScreen(
     var isSearching by remember { mutableStateOf(false) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var destinationLocation by remember { mutableStateOf<LatLng?>(null) } // 도착지 위치
+    var destinationMarker by remember { mutableStateOf<Marker?>(null) } // 도착지 마커
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -55,6 +59,11 @@ fun RouteSearchScreen(
     LaunchedEffect(Unit) {
         coroutineScope.launch {
             currentLocation = getCurrentLocation(context)
+            currentLocation?.let {
+                // 현재 위치의 위도, 경도를 주소로 변환하여 출발지 텍스트 필드에 자동 입력
+                val address = getAddressFromLocation(context, it.latitude, it.longitude)
+                departure = TextFieldValue(address)
+            }
         }
     }
 
@@ -89,8 +98,9 @@ fun RouteSearchScreen(
 
         // 현재 위치 표시
         currentLocation?.let { location ->
+            val address = getAddressFromLocation(context, location.latitude, location.longitude)
             Text(
-                text = "현재 위치: (${location.latitude}, ${location.longitude})",
+                text = "현재 위치: $address",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -180,9 +190,12 @@ fun RouteSearchScreen(
                             map.addMarker(MarkerOptions().position(currentLatLng).title("현재 위치"))
                         }
 
+                        // 기존 도착지 마커가 있다면 제거
+                        destinationMarker?.remove()
+
                         // 도착지 마커 추가
                         destinationLocation?.let {
-                            map.addMarker(MarkerOptions().position(it).title("도착지"))
+                            destinationMarker = map.addMarker(MarkerOptions().position(it).title("도착지"))
                         }
                     }
                 }
@@ -207,6 +220,19 @@ suspend fun getCurrentLocation(context: Context): Location? {
             .addOnFailureListener { exception ->
                 continuation.resumeWithException(exception)
             }
+    }
+}
+
+// 현재 위치의 위도, 경도로 주소를 변환하는 함수
+fun getAddressFromLocation(context: Context, latitude: Double, longitude: Double): String {
+    val geocoder = Geocoder(context)
+    val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+
+    // addresses가 null이 아니고 비어있지 않으면
+    return if (addresses?.isNotEmpty() == true) {
+        addresses[0]?.getAddressLine(0) ?: "주소를 찾을 수 없습니다."
+    } else {
+        "주소를 찾을 수 없습니다."
     }
 }
 
@@ -264,28 +290,68 @@ suspend fun fetchDirections(departure: String, destination: String): List<String
 }
 
 // 주소를 위도, 경도로 변환하는 함수
-fun geocodeAddress(context: Context, address: String): LatLng? {
+suspend fun geocodeAddress(context: Context, address: String): LatLng? {
     val geocoder = Geocoder(context)
-    val location = geocoder.getFromLocationName(address, 1)
-    if (location != null) {
-        return if (location.isNotEmpty()) {
-            val lat = location[0].latitude
-            val lng = location[0].longitude
-            LatLng(lat, lng)
+    return try {
+        val addresses = geocoder.getFromLocationName(address, 1)
+        if (addresses != null && addresses.isNotEmpty()) {
+            val location = addresses[0]
+            LatLng(location.latitude, location.longitude)
         } else {
             null
         }
+    } catch (e: Exception) {
+        null
     }
-    return TODO("Provide the return value")
 }
+
+fun parseRouteDetails(route: String): Triple<String, String, String?> {
+    val lines = route.split("\n")
+    val instruction = lines.getOrNull(0) ?: "경로 설명 없음"
+    val distance = lines.getOrNull(1) ?: "거리 정보 없음"
+    val busDetails = lines.getOrNull(2)
+
+    return Triple(instruction, distance, busDetails)
+}
+
 @Composable
 fun RouteSearchResultItem(route: String) {
-    Text(
-        text = route,
-        style = MaterialTheme.typography.bodyMedium,
+    val (instruction, distance, busDetails) = parseRouteDetails(route)
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(8.dp)
-    )
+            .padding(vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = MaterialTheme.shapes.medium,
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // 경로 지침
+            Text(
+                text = instruction,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 거리 정보
+            Text(
+                text = "거리: $distance",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            // 버스 정보 (있으면 표시)
+            if (!busDetails.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "버스 정보: $busDetails",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
 }

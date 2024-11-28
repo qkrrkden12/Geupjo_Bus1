@@ -419,25 +419,48 @@ fun DrawerContent(onDismiss: () -> Unit, onMenuItemClick: (String) -> Unit) {
         modifier = Modifier
             .fillMaxHeight()
             .width(250.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(16.dp)
-            .background(Color.White)
     ) {
         Text(
             text = "닫기",
             modifier = Modifier
+                .fillMaxWidth() // 터치 인식 범위를 넓힘
                 .clickable(onClick = onDismiss)
-                .padding(8.dp)
+                .padding(12.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = MaterialTheme.shapes.small),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onPrimary // 글자 색상 변경
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
         DrawerMenuItem(label = "홈", onClick = { onMenuItemClick("home") })
         DrawerMenuItem(label = "정류장 검색", onClick = { onMenuItemClick("search") })
-        DrawerMenuItem(label = "경로 검색", onClick = { onMenuItemClick("route") }) // 경로 검색 추가
+        DrawerMenuItem(label = "경로 검색", onClick = { onMenuItemClick("route") })
         DrawerMenuItem(label = "맵", onClick = { onMenuItemClick("map") })
         DrawerMenuItem(label = "만보기", onClick = { onMenuItemClick("manbok") })
     }
 }
+
+@Composable
+fun DrawerMenuItem(label: String, onClick: () -> Unit) {
+    Row( // Row를 사용하여 터치 인식 범위 및 정렬을 개선
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 16.dp, horizontal = 12.dp)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f), shape = MaterialTheme.shapes.small),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary // 글자 색상 변경
+        )
+    }
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -520,7 +543,14 @@ fun ManbokScreen(onBackClick: () -> Unit) {
                 style = TextStyle(fontSize = 24.sp, color = Color.Black) // sp 단위 사용
             )
             Spacer(modifier = Modifier.height(16.dp)) // 여백 추가
-
+            Text(
+                text = "이동 거리: ${round(stepCount*0.6)} m",
+                style = TextStyle(fontSize = 20.sp, color = Color.Black)
+            )
+            Text(
+                text = "소모 칼로리: ${round(stepCount*0.03)} kcal",
+                style = TextStyle(fontSize = 20.sp, color = Color.Black)
+            )
             // 초기화 버튼 추가
             Button(
                 onClick = {
@@ -564,21 +594,6 @@ fun saveStepCount(context: Context, stepCount: Int) {
 fun loadStepCount(context: Context): Int {
     val sharedPreferences = context.getSharedPreferences("step_data", Context.MODE_PRIVATE)
     return sharedPreferences.getInt("step_count", 0) // 기본값 0
-}
-@Composable
-fun DrawerMenuItem(label: String, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp)
-            .clickable(onClick = onClick)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
 }
 
 @Preview(showBackground = true)

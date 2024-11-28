@@ -28,4 +28,8 @@ data class BusStopItem(
     var nodeName: String? = null,
     @field:Element(name = "nodeid", required = false)  // 여기에서 태그 이름을 nodenm으로 변경
     var nodeId: String? = null,
+    @field:Element(name = "gpslati", required = false)
+    var nodeLati: Double? = null,
+    @field:Element(name = "gpslong", required = false)
+    var nodeLong: Double? = null
 )
