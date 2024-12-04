@@ -5,27 +5,11 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.util.Log
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,10 +22,7 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.Marker
-import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.gms.maps.model.PolylineOptions
+import com.google.android.gms.maps.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,26 +44,40 @@ fun RouteSearchScreen(
     var polylinePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
+    val departureMarker = remember { mutableStateOf<Marker?>(null) }
     var destinationLocation by remember { mutableStateOf<LatLng?>(null) }
-    var destinationMarker by remember { mutableStateOf<Marker?>(null) }
+    val destinationMarker = remember { mutableStateOf<Marker?>(null) }
+    val currentPolyline = remember { mutableStateOf<Polyline?>(null) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     val polylineColor = 0xFF6200EE.toInt()
-    // 위치 가져오기
-    LaunchedEffect(Unit) {
-        coroutineScope.launch {
-            currentLocation = getCurrentLocation(context)
-            currentLocation?.let {
-                val address = getAddressFromLocation(context, it.latitude, it.longitude)
-                departure = TextFieldValue(address)
-            }
-        }
-    }
 
     val mapView = rememberMapViewWithLifecycle(context)
     var googleMap by remember { mutableStateOf<GoogleMap?>(null) }
+
+    LaunchedEffect(Unit) {
+        currentLocation = getCurrentLocation(context)
+        currentLocation?.let {
+            val address = getAddressFromLocation(context, it.latitude, it.longitude)
+            departure = TextFieldValue(address)
+        }
+        mapView.getMapAsync { gMap ->
+            googleMap = gMap
+            googleMap?.let { map ->
+                currentLocation?.let {
+                    val currentLatLng = LatLng(it.latitude, it.longitude)
+                    map.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 14f))
+                    departureMarker.value = map.addMarker(
+                        MarkerOptions()
+                            .position(currentLatLng)
+                            .title("출발지")
+                    )
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -95,7 +90,6 @@ fun RouteSearchScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 현재 위치 표시
         currentLocation?.let { location ->
             val address = getAddressFromLocation(context, location.latitude, location.longitude)
             Text(text = "현재 위치: $address", style = MaterialTheme.typography.bodyMedium)
@@ -103,7 +97,6 @@ fun RouteSearchScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 출발지 입력
         Text(text = "출발지", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -118,7 +111,6 @@ fun RouteSearchScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 도착지 입력
         Text(text = "도착지", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -135,7 +127,15 @@ fun RouteSearchScreen(
                     coroutineScope.launch {
                         val (results, polyline) = fetchDirections(departure.text, destination.text)
                         routeResults = results
-                        polyline?.let { polylinePoints = decodePolyline(it) }
+                        updateMapWithDirections(
+                            googleMap = googleMap,
+                            polyline = polyline,
+                            polylineColor = polylineColor,
+                            currentPolyline = currentPolyline,
+                            destinationMarker = destinationMarker,
+                            departureMarker = departureMarker,
+                            currentLocation = currentLocation
+                        )
                         isSearching = false
                     }
                 }
@@ -150,7 +150,15 @@ fun RouteSearchScreen(
                 coroutineScope.launch {
                     val (results, polyline) = fetchDirections(departure.text, destination.text)
                     routeResults = results
-                    polyline?.let { polylinePoints = decodePolyline(it) }
+                    updateMapWithDirections(
+                        googleMap = googleMap,
+                        polyline = polyline,
+                        polylineColor = polylineColor,
+                        currentPolyline = currentPolyline,
+                        destinationMarker = destinationMarker,
+                        departureMarker = departureMarker,
+                        currentLocation = currentLocation
+                    )
                     isSearching = false
                 }
             },
@@ -176,37 +184,13 @@ fun RouteSearchScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // 지도 표시
             AndroidView(
                 factory = { mapView },
                 modifier = Modifier.fillMaxHeight(0.8f)
             ) { map ->
                 map.getMapAsync { gMap ->
                     googleMap = gMap
-                    googleMap?.let { map ->
-                        // 현재 위치 표시
-                        currentLocation?.let {
-                            val currentLatLng = LatLng(it.latitude, it.longitude)
-                            map.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 16f))
-                            map.addMarker(MarkerOptions().position(currentLatLng).title("현재 위치"))
-                        }
-
-                        // 도착지 마커 표시
-                        destinationMarker?.remove()
-                        destinationLocation?.let {
-                            destinationMarker = map.addMarker(MarkerOptions().position(it).title("도착지"))
-                        }
-
-                        // 폴리라인 그리기
-                        if (polylinePoints.isNotEmpty()) {
-                            map.addPolyline(
-                                PolylineOptions()
-                                    .addAll(polylinePoints)
-                                    .color(polylineColor) // Compose 내부에서 미리 계산한 색상 값 사용
-                                    .width(10f)
-                            )
-                        }
-                    }
+                    googleMap?.clear()
                 }
             }
         } else if (!isSearching) {
@@ -215,22 +199,58 @@ fun RouteSearchScreen(
     }
 }
 
-@SuppressLint("MissingPermission")
-suspend fun getCurrentLocation(context: Context): Location? {
-    val fusedLocationProviderClient: FusedLocationProviderClient =
-        LocationServices.getFusedLocationProviderClient(context)
+fun updateMapWithDirections(
+    googleMap: GoogleMap?,
+    polyline: String?,
+    polylineColor: Int,
+    currentPolyline: MutableState<Polyline?>,
+    destinationMarker: MutableState<Marker?>,
+    departureMarker: MutableState<Marker?>,
+    currentLocation: Location?
+) {
+    googleMap?.let { map ->
+        // 기존 폴리라인 제거
+        currentPolyline.value?.remove()
 
-    return suspendCoroutine { continuation ->
-        fusedLocationProviderClient.lastLocation
-            .addOnSuccessListener { location -> continuation.resume(location) }
-            .addOnFailureListener { exception -> continuation.resumeWithException(exception) }
+        // 출발지 마커 추가 또는 갱신
+        currentLocation?.let {
+            val currentLatLng = LatLng(it.latitude, it.longitude)
+            departureMarker.value?.remove()
+            departureMarker.value = map.addMarker(
+                MarkerOptions()
+                    .position(currentLatLng)
+                    .title("출발지")
+            )
+        }
+
+        // 새 폴리라인 추가
+        if (!polyline.isNullOrEmpty()) {
+            val points = decodePolyline(polyline)
+            currentPolyline.value = map.addPolyline(
+                PolylineOptions()
+                    .addAll(points)
+                    .color(polylineColor)
+                    .width(10f)
+            )
+
+            // 마지막 지점을 목적지로 설정
+            val lastPoint = points.lastOrNull()
+            lastPoint?.let {
+                // 기존 마커 제거
+                destinationMarker.value?.remove()
+
+                // 새 마커 추가
+                destinationMarker.value = map.addMarker(
+                    MarkerOptions()
+                        .position(it)
+                        .title("도착지")
+                )
+
+                // 카메라 이동
+                map.moveCamera(CameraUpdateFactory.newLatLngZoom(it, 14f))
+            }
+        }
     }
-}
-
-fun getAddressFromLocation(context: Context, latitude: Double, longitude: Double): String {
-    val geocoder = Geocoder(context)
-    val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-    return addresses?.firstOrNull()?.getAddressLine(0) ?: "주소를 찾을 수 없습니다."
 }
 
 suspend fun fetchDirections(departure: String, destination: String): Pair<List<String>, String?> {
@@ -320,6 +340,24 @@ fun decodePolyline(encoded: String): List<LatLng> {
         poly.add(p)
     }
     return poly
+}
+
+@SuppressLint("MissingPermission")
+suspend fun getCurrentLocation(context: Context): Location? {
+    val fusedLocationProviderClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(context)
+
+    return suspendCoroutine { continuation ->
+        fusedLocationProviderClient.lastLocation
+            .addOnSuccessListener { location -> continuation.resume(location) }
+            .addOnFailureListener { exception -> continuation.resumeWithException(exception) }
+    }
+}
+
+fun getAddressFromLocation(context: Context, latitude: Double, longitude: Double): String {
+    val geocoder = Geocoder(context)
+    val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+    return addresses?.firstOrNull()?.getAddressLine(0) ?: "주소를 찾을 수 없습니다."
 }
 
 @Composable
