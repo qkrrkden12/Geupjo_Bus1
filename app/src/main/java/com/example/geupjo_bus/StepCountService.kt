@@ -17,6 +17,8 @@ class StepCountService : Service() {
     private lateinit var sensorManager: SensorManager
     private var stepSensor: Sensor? = null
     private var stepCount = 0
+    private lateinit var notificationManager: NotificationManager
+    private lateinit var notificationBuilder: NotificationCompat.Builder
 
     override fun onCreate() {
         super.onCreate()
@@ -32,18 +34,17 @@ class StepCountService : Service() {
                 "Step Count Service",
                 NotificationManager.IMPORTANCE_DEFAULT
             )
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
 
         // 포그라운드 서비스로 실행할 알림 설정
-        val notification = NotificationCompat.Builder(this, "StepCountServiceChannel")
-            .setContentTitle("걸음 수 추적 중")
-            .setContentText("걸음 수를 추적하고 있습니다...")
+        notificationBuilder = NotificationCompat.Builder(this, "StepCountServiceChannel")
+            .setContentTitle("오늘의 걸음 수")
+            .setContentText("걸음 수: $stepCount")
             .setSmallIcon(android.R.drawable.ic_notification_overlay)
-            .build()
 
-        startForeground(1, notification) // 포그라운드 서비스로 실행
+        startForeground(1, notificationBuilder.build()) // 포그라운드 서비스로 실행
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,6 +62,7 @@ class StepCountService : Service() {
                 stepCount += 1
                 Log.d("StepCountService", "걸음 수: $stepCount")
                 saveStepCount(stepCount)
+                updateNotification(stepCount)
             }
         }
 
@@ -77,6 +79,14 @@ class StepCountService : Service() {
         editor.apply()
     }
 
+    // 알림을 갱신하여 걸음 수를 표시
+    private fun updateNotification(stepCount: Int) {
+        val updatedNotification = notificationBuilder
+            .setContentText("걸음 수: $stepCount") // 걸음 수 업데이트
+            .build()
+
+        notificationManager.notify(1, updatedNotification) // 알림 갱신
+    }
     override fun onDestroy() {
         super.onDestroy()
         sensorManager.unregisterListener(stepListener) // 리스너 해제
@@ -86,4 +96,3 @@ class StepCountService : Service() {
         return null
     }
 }
-

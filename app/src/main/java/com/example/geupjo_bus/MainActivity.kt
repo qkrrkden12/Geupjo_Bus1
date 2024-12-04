@@ -523,6 +523,16 @@ fun ManbokScreen(onBackClick: () -> Unit) {
             val stepCountServiceIntent = Intent(context, StepCountService::class.java)
             ContextCompat.startForegroundService(context, stepCountServiceIntent)
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                context as Activity,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                1
+            )
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
